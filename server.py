@@ -23,72 +23,32 @@ server_socket.bind((HOST, PORT))
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-# variable to hold file path to the persisted file
-# storing the file path to the file storing all
-# accepted string values.
-PersistedFile = config.get('path','persistedFilePath')
-
-def persist_file_path(file_path,file_name):
-    """
-    This function persists (stores) the file path in
-    PersistedFilePath.txt file.
-    """
-    try:
-        with open(file_name,'w',encoding='utf-8') as file:
-            file.write(file_path)
-            file.close()
-    except FileNotFoundError:
-        print("[Error Message]: Unable to find file. Terminating Server.")
-    except TypeError:
-        print("[Error Message]: Wrong input type. Terminating Server.")
-
-def file_path_changed (file_name):
-    """
-    This function checks to see if the file path in our config
-    file has been changed and returns True as well as stores
-    the new path in our PersistedFilePath.txt file.
-    """
-    try:
-        with open(file_name,'r',encoding='utf-8') as persisted_file:
-            persisted_file_path = persisted_file.readline()
-
-            file_path = config.get('path','linuxpath')
-
-            persisted_file.close()
-
-            return file_path == persisted_file_path
-
-    except FileNotFoundError:
-        print("[Error Message]: Unable to find file. Terminating Server.")
-
-def search_in_large_file(file_name, search_value):
+def search_in_large_file(file, search_value):
     """
     This function searches for the client's value by
     putting the contents of a file in chunks and searches
-    through each chunk for the value. It returns true when
-    a value is found and False if otherwise.
+    through each chunk for the value. It returns True when
+    the value is found and False if otherwise.
     """
-    try:
-        with open(file_name, "r",encoding='utf-8') as file:
-            while True:
-                chunk = file.read(1024)  # Read 1024 bytes at a time
-                if not chunk:
-                    break
-                if search_value in chunk:
+    while True:
+        chunk = file.read(1024)  # Read 1024 bytes at a time
+        if not chunk:
+            break
+        if search_value in chunk:
+            for data in chunk.split(';'):
+                if data == search_value:
                     return True
-        file.close()
         return False
-    except FileNotFoundError:
-        print("[Error Message]: Unable to find file. Terminating Server.")
 
-def client_handler(client_socket, client_address, file_name):
+def client_handler(client_socket, client_address,file_path):
     """
-    This function handles individual client requests.
+    This function handles requests from clients whenever a
+    connection is established.
     """
     # The while loop makes it possible for the client to make multiple queries
     # with the same connection.
     try:
-        file = config.get('path','linuxpath')
+        search_file = open(file_path,"r",encoding="utf-8")
         while True:
             # get the start time for our search query.
             start_time = time.time()
@@ -102,17 +62,26 @@ def client_handler(client_socket, client_address, file_name):
             # removing any x\00 characters from the end of the string.
             data = data.rstrip('\x00')
 
-            #intializing flag with value returned from filePathChanged function
-            reread_on_query = file_path_changed(file_name)
+            new_file_path = config.get("path","linuxpath")
+
+            # check to see if filepath in the config file has changed.
+            if file_path == new_file_path:
+                reread_on_query = False
+            else:
+                reread_on_query = True
 
             if reread_on_query:
-                file_path = config.get('path','linuxpath') # get the new filepath.
-                persist_file_path(file_path,file_name) # persist the new filepath.
-
-            if search_in_large_file(file, data):
-                client_socket.send(b"STRING EXISTS\n")
+                with open(new_file_path,"r",encoding="utf-8") as file:
+                    if search_in_large_file(file,data):
+                        client_socket.sendall(b"STRING EXISTS")
+                    else:
+                        client_socket.sendall(b"STRING NOT FOUND")
+                    search_file = file # reassign search_file with the current filepath.
             else:
-                client_socket.send(b"STRING NOT FOUND\n")
+                if search_in_large_file(search_file,data):
+                    client_socket.sendall(b"STRING EXISTS")
+                else:
+                    client_socket.sendall(b"STRING NOT FOUND")
 
             # get the finish time for our search query.
             finish_time = time.time()
@@ -126,27 +95,34 @@ def client_handler(client_socket, client_address, file_name):
             # get the timestamp after executing query.
             time_stamp = datetime.datetime.now()
 
-            print(f"DEBUG:\n [IP Address]: {client_address[0]} [Search Query]: {data}\n\
-            [Execution Time]: {execution_time}ms, [Timestamp]: {time_stamp}")
+            print(
+                f"DEBUG:\n"
+                f"[IP Address]: {client_address[0]},"
+                f"[Search Query]: {data},\n"
+                f"[Execution Time]: {execution_time}ms,"
+                f"[Timestamp]: {time_stamp}\n"
+                )
 
     except ConnectionAbortedError:
-        print("[Server Message]: Connection closed.")
+        print("[Server Message]: Connection terminated.")
     except ValueError:
-        print("[Error Message]: Entered the wrong value")
+        print("[Error Message]: Client entered the wrong value")
     except ConnectionError:
-        print("[Error Message]: Connection was terminated")
+        print("[Error Message]: Connection terminated")
 
 def run_server():
     """
-    We call this function anytime we need to startup our server scripts.
+    This function starts our TCP Server.
     """
     server_socket.listen()
     print("[Server Status]...Server is running!")
 
+    file_path = config.get("path","linuxpath") # checks for the filepath in the config file
+
     while True:
         client_socket, client_address = server_socket.accept()
         client_thread = threading.Thread(target=client_handler,args=(client_socket,client_address,
-        PersistedFile))
+        file_path))
         client_thread.start()
 
         print(f"Connection established with {client_address[0]}")

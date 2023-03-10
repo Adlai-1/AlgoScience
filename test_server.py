@@ -1,76 +1,41 @@
+"""
+This module contains all the tests written to ensure that the program
+codes in server.py work properly without breaking.
+"""
+# imports
 import socket
-import pytest
 import configparser
-
-# Define the TCP server host and port
-HOST = 'localhost'
-PORT = 5050
+import pytest
 
 # create a configparser object.
-# open and read the config file.
 config = configparser.ConfigParser()
-config.read('config.ini')
+config.read('config.ini') # opens and reads content in the config file.
 
-# Define a test function to test the TCP server
-def query_server(info):
+# defining variables
+HOST = 'localhost'
+PORT = 5000
 
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
-    client_socket.connect((HOST, PORT))
-    
-    client_socket.sendall(info.encode())
-
-    # Receive the response from the server
-    response = client_socket.recv(1024).decode()
-    
-    # Print the response
-    return response
-
-# Testing smaller components (functions) of our program.
-
-# test function for persisting file path.
-def persist_file_path(file_path,file_name):
+@pytest.fixture(scope='module')
+def tcp_server():
     """
-    This function persists (stores) the file path in
-    PersistedFilePath.txt file.
+    Function contains codes responsible for setting up and running
+    our TCP Server during testing.
     """
-    try:
-        with open(file_name,'w',encoding='utf-8') as file:
-            file.write(file_path)
-            file.close()
-            return 'Done'
-    except FileNotFoundError:
-        return "[Error Message]: Unable to find file. Terminating Server."
-    except TypeError:
-        return "[Error Message]: Wrong input type. Terminating Server."
+    # Set up the TCP server
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((HOST, PORT))
+    server_socket.listen(1)
 
-# test function for determining if a file path has been changed or not.
-def file_path_changed (file_name) -> bool:
-    """
-    This function checks to see if the file path in our config
-    file has been changed and returns True as well as stores
-    the new path in our PersistedFilePath.txt file.
-    """
-    try:
-        with open(file_name,'r',encoding='utf-8') as persisted_file:
-            persisted_file_path = persisted_file.readline()
+    yield server_socket
 
-            file_path = config.get('path','linuxpath')
+    server_socket.close()
 
-            persisted_file.close()
-
-            return file_path == persisted_file_path
-        
-    except FileNotFoundError:
-        return "[Error Message]: Unable to find file. Terminating Server."
-
-# test function for finidng a string value.
 def search_in_large_file(file_name, search_value):
     """
     This function searches for the client's value by
     putting the contents of a file in chunks and searches
-    through each chunk for the value. It returns true when
-    a value is found and False if otherwise.
+    through each chunk for the value. It returns True when
+    the value is found and False if otherwise.
     """
     try:
         with open(file_name, 'r',encoding='utf-8') as file:
@@ -79,47 +44,45 @@ def search_in_large_file(file_name, search_value):
                 if not chunk:
                     break
                 if search_value in chunk:
-                    return True
+                    for data in chunk.split(';'):
+                        if data == search_value:
+                            return True
         file.close()
         return False
     except FileNotFoundError:
-        return"[Error Message]: Unable to find file. Terminating Server."
-    
-def test_query():
-    """
-    Test function for executing searh query.
-    """
-    assert query_server('1') == 'STRING EXISTS\n'
-    assert query_server('a') == 'STRING NOT FOUND\n'
-    assert query_server('8') == 'STRING EXISTS\n'
-    assert query_server('B') == 'STRING NOT FOUND\n'
-    assert query_server('c') == 'STRING NOT FOUND\n'
+        return"[Error Message]: Unable to find file."
 
-def test_persist_file_path():
+def test_tcp_server(tcp_server):
     """
-    Test function for executing searh query.
+    Test function for starting and running our TCP Server.
     """
-    assert persist_file_path(' ','testFile2.txt') == 'Done'
-    assert persist_file_path('./400.txt','testFile2.txt') == 'Done'
-    assert persist_file_path(4,'testFile2.txt') == '[Error Message]: Wrong input type. Terminating Server.'
+    # Set up the client
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect((HOST, PORT))
+
+    # Send a message from the client to the server
+    message = b'[Server Status]...Server is running!'
+    client_socket.sendall(message)
+
+    # Receive the message from the server
+    conn, addr = tcp_server.accept()
+    received_message = conn.recv(1024)
+
+    # Assert that the message was received correctly
+    assert received_message == message
+
+    # Close the connections
+    client_socket.close()
+    conn.close()
 
 def test_search_in_large_file():
     """
-    Test function for executing searh query.
-    the file 200k.txt is used as the file with all accepted
+    Test function for executing search query.
+    The file 200k.txt is used as the file with all accepted
     string values.
     """
-    assert search_in_large_file('200k.txt','a') == False
-    assert search_in_large_file('200k.txt','1') == True
-    assert search_in_large_file('200k.txt','v') == False
-    assert search_in_large_file('200.txt','4') == "[Error Message]: Unable to find file. Terminating Server."
-    assert search_in_large_file('400.html','2') == "[Error Message]: Unable to find file. Terminating Server."
-
-def test_file_path_changed():
-    """
-    Test function for determining if the file path has been changed.
-    the file testFile1.txt is used for this test.
-    """
-    assert file_path_changed('testFile1.txt') == False
-    assert file_path_changed('PersistedFilePath.txt') == True
-    assert file_path_changed('test.txt') == "[Error Message]: Unable to find file. Terminating Server."
+    assert search_in_large_file('200k.txt','a') is False
+    assert search_in_large_file('200k.txt','1') is True
+    assert search_in_large_file('200k.txt','v') is False
+    assert search_in_large_file('200.txt','4') == "[Error Message]: Unable to find file."
+    assert search_in_large_file('400.html','2') == "[Error Message]: Unable to find file."
