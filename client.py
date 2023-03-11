@@ -13,7 +13,7 @@ client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((HOST, PORT))
 
 # The loop keeps the connection between the client
-# and server alive until the client otherwise.
+# and the server alive.
 try:
     while True:
 

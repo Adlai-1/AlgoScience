@@ -8,7 +8,7 @@ import datetime
 import time
 import configparser
 
-# declare vaialbles for host address and port number.
+# declare variables for host address and port number.
 PORT = 5050
 HOST = 'localhost'
 
@@ -23,12 +23,13 @@ server_socket.bind((HOST, PORT))
 config = configparser.ConfigParser()
 config.read('config.ini')
 
+
 def search_in_large_file(file, search_value):
     """
-    This function searches for the client's value by
-    putting the contents of a file in chunks and searches
-    through each chunk for the value. It returns True when
-    the value is found and False if otherwise.
+    This function groups the contents of a file into chunks
+    and searches through their values to find a string value.
+    When the value is found, it returns True;
+    otherwise, it returns False.
     """
     while True:
         chunk = file.read(1024)  # Read 1024 bytes at a time
@@ -40,7 +41,8 @@ def search_in_large_file(file, search_value):
                     return True
         return False
 
-def client_handler(client_socket, client_address,file_path):
+
+def client_handler(client_socket, client_address, file_path):
     """
     This function handles requests from clients whenever a
     connection is established.
@@ -48,37 +50,37 @@ def client_handler(client_socket, client_address,file_path):
     # The while loop makes it possible for the client to make multiple queries
     # with the same connection.
     try:
-        search_file = open(file_path,"r",encoding="utf-8")
+        search_file = open(file_path, "r", encoding="utf-8")
         while True:
             # get the start time for our search query.
             start_time = time.time()
 
-            # recieve string value not more than 1024 bytes.
+            # receive string value at most 1024 bytes.
             data = client_socket.recv(1024)
 
-            # decode byte data recieved into string.
+            # decode byte data received into a string.
             data = data.decode()
 
             # removing any x\00 characters from the end of the string.
             data = data.rstrip('\x00')
 
-            new_file_path = config.get("path","linuxpath")
+            new_file_path = config.get("path", "linuxpath")
 
-            # check to see if filepath in the config file has changed.
+            # check to see if the filepath in the config file has changed.
             if file_path == new_file_path:
                 reread_on_query = False
             else:
                 reread_on_query = True
 
             if reread_on_query:
-                with open(new_file_path,"r",encoding="utf-8") as file:
-                    if search_in_large_file(file,data):
+                with open(new_file_path, "r", encoding="utf-8") as file:
+                    if search_in_large_file(file, data):
                         client_socket.sendall(b"STRING EXISTS")
                     else:
                         client_socket.sendall(b"STRING NOT FOUND")
-                    search_file = file # reassign search_file with the current filepath.
+                    search_file = file
             else:
-                if search_in_large_file(search_file,data):
+                if search_in_large_file(search_file, data):
                     client_socket.sendall(b"STRING EXISTS")
                 else:
                     client_socket.sendall(b"STRING NOT FOUND")
@@ -95,13 +97,11 @@ def client_handler(client_socket, client_address,file_path):
             # get the timestamp after executing query.
             time_stamp = datetime.datetime.now()
 
-            print(
-                f"DEBUG:\n"
-                f"[IP Address]: {client_address[0]},"
-                f"[Search Query]: {data},\n"
-                f"[Execution Time]: {execution_time}ms,"
-                f"[Timestamp]: {time_stamp}\n"
-                )
+            print(f"DEBUG:\n"
+                  f"[IP Address]: {client_address[0]},"
+                  f"[Search Query]: {data},\n"
+                  f"[Execution Time]: {execution_time}ms,"
+                  f"[Timestamp]: {time_stamp}\n")
 
     except ConnectionAbortedError:
         print("[Server Message]: Connection terminated.")
@@ -110,6 +110,7 @@ def client_handler(client_socket, client_address,file_path):
     except ConnectionError:
         print("[Error Message]: Connection terminated")
 
+
 def run_server():
     """
     This function starts our TCP Server.
@@ -117,14 +118,16 @@ def run_server():
     server_socket.listen()
     print("[Server Status]...Server is running!")
 
-    file_path = config.get("path","linuxpath") # checks for the filepath in the config file
+    file_path = config.get("path", "linuxpath")
 
     while True:
         client_socket, client_address = server_socket.accept()
-        client_thread = threading.Thread(target=client_handler,args=(client_socket,client_address,
-        file_path))
+        client_thread = threading.Thread(target=client_handler,
+                                         args=(client_socket, client_address,
+                                               file_path))
         client_thread.start()
 
         print(f"Connection established with {client_address[0]}")
+
 
 run_server()
